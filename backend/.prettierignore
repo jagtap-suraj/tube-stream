@@ -1,0 +1,33 @@
+
+
+# Ignore node_modules folder
+node_modules/
+
+# Ignore build output directory
+dist/
+build/
+
+# Ignore TypeScript declaration files
+*.d.ts
+
+# Ignore compiled JavaScript files
+*.js
+*.jsx
+*.mjs
+
+# Ignore configuration files (e.g. for prettier itself)
+.prettierignore
+.prettierrc
+tsconfig.json
+
+# Ignore IDE/editor config files
+.vscode/
+.idea/
+
+# Ignore logs
+*.log
+npm-debug.log*
+
+# Ignore other temporary or cache files
+*.tsbuildinfo
+*.cache/

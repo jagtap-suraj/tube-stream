@@ -1,1 +1,5 @@
-console.log("Hello, Node!");
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: "./.env",
+});
