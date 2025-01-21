@@ -1,10 +1,11 @@
-import { DB_NAME } from "../constants.js";
+import config from "../config/index.js";
+import { ConstantEnums } from "../constants/constantEnums.js";
 import mongoose from "mongoose";
 
 const connectDB = async () => {
   try {
     const connectionInstance = await mongoose.connect(
-      `${process.env.MONGODB_URI}/${DB_NAME}`
+      `${config.mongodb.uri}/${ConstantEnums.TUBESTREAM}`
     );
     console.log(
       `\n MongoDB connected !! DB HOST: ${connectionInstance.connection.host}`

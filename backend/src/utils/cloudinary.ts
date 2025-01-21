@@ -6,27 +6,43 @@
  */
 
 import { v2 as cloudinary } from "cloudinary";
+import { ConstantEnums } from "../constants/constantEnums.js";
 import fs from "fs"; // Node File System helps with managing files and directories
+import config from "../config/index.js";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
-const uploadOnCloudinary = async (localFilePath: string) => {
+cloudinary.config(
+  {
+    cloud_name: config.cloudinary.cloudName,
+    api_key: config.cloudinary.apiKey,
+    api_secret: config.cloudinary.apiSecret,
+  },
+);
+
+const uploadOnCloudinary = async (
+  localFilePath: string,
+  username: string,
+  contentType: ConstantEnums
+) => {
   try {
     if (!localFilePath) return null;
     //upload the file on cloudinary
     const response = await cloudinary.uploader.upload(localFilePath, {
+      folder: `${ConstantEnums.TUBESTREAM}/${ConstantEnums.USERS}/${username}/${contentType}`,
       resource_type: "auto",
     });
-    console.log("file is uploaded on cloudinary ", response.url);
-    fs.unlinkSync(localFilePath);
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+
     return response;
   } catch (error) {
+    console.error("Cloudinary Upload Error:", error);
     // remove the locally saved temporary file as the upload operation got failed
-    fs.unlinkSync(localFilePath);
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
+
     return null;
   }
 };
