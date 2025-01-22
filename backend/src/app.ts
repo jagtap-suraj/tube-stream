@@ -18,8 +18,11 @@ app.use(cookieParser()); // access and set the user browser cookies from the ser
 
 // Routes import
 import userRouter from "./routes/user.routes.js";
+import errorHandler from "./middlewares/errorHandler.js";
 
 // Routes Declaration
 app.use("/api/v1/users", userRouter); // When the url starts with /api/v1/users, the userRouter will be executed
+
+app.use(errorHandler);
 
 export default app;

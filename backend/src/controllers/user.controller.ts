@@ -48,7 +48,7 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(
       400,
       "Validation Error",
-      error.errors.map((e) => e.message)
+      error.errors.map((e) => `${e.path.join(".")}: ${e.message}`)
     );
   }
 
