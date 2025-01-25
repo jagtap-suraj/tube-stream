@@ -10,14 +10,11 @@ import { ConstantEnums } from "../constants/constantEnums.js";
 import fs from "fs"; // Node File System helps with managing files and directories
 import config from "../config/index.js";
 
-
-cloudinary.config(
-  {
-    cloud_name: config.cloudinary.cloudName,
-    api_key: config.cloudinary.apiKey,
-    api_secret: config.cloudinary.apiSecret,
-  },
-);
+cloudinary.config({
+  cloud_name: config.cloudinary.cloudName,
+  api_key: config.cloudinary.apiKey,
+  api_secret: config.cloudinary.apiSecret,
+});
 
 const uploadOnCloudinary = async (
   localFilePath: string,
