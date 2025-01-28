@@ -1,31 +1,65 @@
-import multer from "multer"; //  multer package to handle file uploads.
+import multer, { FileFilterCallback } from "multer";
+import ApiError from "../utils/ApiError.js";
+import mime from "mime-types";
+import { NextFunction, Request, Response } from "express";
 
 /**
-- The `multer.diskStorage()` method is used to configure how uploaded files will be stored on the server.
-
-- It takes an object with two functions:
-
-    **a) `destination`:* Defines where the uploaded file will be stored.
-    - `cb(null, "./public/temp");` → Saves the file inside the `./public/temp` directory.
-
-    **b) `filename`:* Defines the name of the uploaded file.
-    - `cb(null, file.originalname);` → Keeps the original file name.
+ * Storage configuration for uploaded files
+ * Files are temporarily stored in './public/temp' with their original names
  */
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./public/temp");
-  },
-
-  filename: function (req, file, cb) {
-    cb(null, file.originalname);
-  },
+  destination: (_req, _file, cb) => cb(null, "./public/temp"),
+  filename: (_req, file, cb) => cb(null, file.originalname),
 });
 
 /**
- * - Creates a **Multer instance** with the defined `storage` settings.
- * - This instance (`upload`) can now be used as middleware in routes to handle file uploads.
+ * File type validator
+ * Only allows jpeg, png, jpg, and webp image formats
  */
-export const upload = multer({
-  storage,
-});
+const fileFilter = (
+  _req: Request, // Request object (unused, hence _)
+  file: Express.Multer.File, // Contains info about uploaded file
+  cb: FileFilterCallback // Callback function to accept/reject file
+) => {
+  const allowedMimeTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/jpg",
+    "image/webp",
+  ];
 
+  // Check file's type by looking at its extension
+  const mimeType = mime.lookup(file.originalname);
+
+  // If invalid file type:
+  if (!mimeType || !allowedMimeTypes.includes(mimeType)) {
+    // Call callback with error
+    return cb(new ApiError(400, "Invalid file type..."));
+  }
+
+  // If valid file type:
+  // Call callback with (null = no error, true = accept file)
+  cb(null, true);
+};
+
+// Main multer configuration
+const multerUpload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+  fileFilter,
+}).fields([
+  { name: "avatar", maxCount: 1 },
+  { name: "cover-image", maxCount: 1 },
+]);
+
+/**
+ * Unified error handling middleware for file uploads
+ * Converts all multer errors into ApiError format
+ */
+const upload = (req: Request, res: Response<any>, next: NextFunction) => {
+  multerUpload(req, res, (err) =>
+    err ? next(new ApiError(400, err.message)) : next()
+  );
+};
+
+export default upload;

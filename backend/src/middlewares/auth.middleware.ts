@@ -32,8 +32,6 @@ const verifyJWT = asyncHandler(
       if (!accessToken) {
         throw new ApiError(401, "Unauthorized - No Access Token");
       }
-      console.log("Access Token Expiry: ", jwt.decode(accessToken));
-      console.log("Refresh Token Expiry: ", jwt.decode(refreshToken));
 
       try {
         // Verify access token
@@ -51,7 +49,6 @@ const verifyJWT = asyncHandler(
       } catch (error: any) {
         // Handle expired access token
         if (error.name === "TokenExpiredError") {
-          console.log("Access token expired");
           if (!refreshToken) {
             throw new ApiError(401, "Unauthorized - No Refresh Token");
           }
@@ -82,7 +79,6 @@ const verifyJWT = asyncHandler(
             return next();
           } catch (error: any) {
             if (error.name === "TokenExpiredError") {
-              console.log("Refresh token expired");
               res.clearCookie("refreshToken"); // Clear refresh token if it's expired
               res.clearCookie("accessToken");
               throw new ApiError(403, "Session expired. Please log in again.");

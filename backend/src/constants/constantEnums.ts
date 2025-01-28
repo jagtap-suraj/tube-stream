@@ -1,7 +1,7 @@
 // have an enum with all the folder names
 export enum ConstantEnums {
-  AVATAR = "avatars",
-  COVER_IMAGE = "cover_images",
+  AVATAR = "avatar",
+  COVER_IMAGE = "cover-image",
   VIDEO = "videos",
   TUBE_STREAM = "tube-stream",
   USERS = "users",

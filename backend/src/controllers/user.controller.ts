@@ -1,41 +1,20 @@
 import { User } from "../models/user.model.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiError from "../utils/ApiError.js";
-import { z } from "zod";
 import { Request, Response } from "express";
 import getFile from "../utils/getFile.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { ConstantEnums } from "../constants/constantEnums.js";
-
-const generateAccessAndRefreshToken = async (userId: string) => {
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      throw new ApiError(404, "User not found");
-    }
-    const accessToken = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
-    return { accessToken, refreshToken };
-  } catch (error) {
-    throw new ApiError(500, "Token generation failed");
-  }
-};
-
-const registerUserSchema = z.object({
-  fullName: z.string().min(3, "Name is too short"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must contain atleast 8 characters"),
-  username: z
-    .string()
-    .min(3, "Username is too short")
-    .regex(
-      /^[a-zA-Z0-9_-]+$/,
-      "Username can only contain letters, numbers, underscores, and hyphens"
-    ),
-});
+import zodErrorConverter from "../utils/zodErrorConverter.js";
+import {
+  changePasswordSchema,
+  loginUserSchema,
+  registerUserSchema,
+  updateUserDetailsSchema,
+} from "../zodSchemas.js";
+import generateTokens from "../utils/generateTokens.js";
+import cookieOptions from "../constants/cookieOptions.js";
 
 /**
  * - Add Multer middleware in the user route
@@ -48,99 +27,87 @@ const registerUserSchema = z.object({
  * - check for user creation
  * - return res
  */
-const registerUser = asyncHandler(async (req: Request, res: Response) => {
-  // If the body is empty
-  if (!req.body) throw new ApiError(400, "Empty Request Body");
+export const registerUser = asyncHandler(
+  async (req: Request, res: Response) => {
+    // If the body is empty
+    if (!req.body) throw new ApiError(400, "Empty Request Body");
 
-  // Trim the fields to remove unwanted spaces
-  req.body.fullName = req.body.fullName?.trim();
-  req.body.email = req.body.email?.trim();
-  req.body.username = req.body.username?.trim();
-  req.body.password = req.body.password?.trim();
+    // Trim the fields to remove unwanted spaces
+    req.body.fullName = req.body.fullName?.trim();
+    req.body.email = req.body.email?.trim();
+    req.body.username = req.body.username?.trim();
+    req.body.password = req.body.password?.trim();
 
-  // Schema Validation
-  const { success, error } = registerUserSchema.safeParse(req.body);
-  if (!success) {
-    throw new ApiError(
-      400,
-      "Validation Error",
-      error.errors.map((e) => `${e.path.join(".")}: ${e.message}`)
-    );
-  }
-
-  // Check if user already exists
-  const existingUser = await User.findOne({
-    $or: [
-      { username: req.body.username?.trim() },
-      { email: req.body.email?.trim() },
-    ],
-  });
-  if (existingUser) {
-    throw new ApiError(409, "User Already Exists");
-  }
-
-  // Avatar Validation and Upload
-  const avatarLocalPath = getFile(req, "avatar")?.path;
-  if (!avatarLocalPath) {
-    throw new ApiError(400, "Avatar is required");
-  }
-  const avatarCloudinaryPath = await uploadOnCloudinary(
-    avatarLocalPath,
-    req.body.username,
-    ConstantEnums.AVATAR
-  );
-  if (!avatarCloudinaryPath) {
-    throw new ApiError(400, "Avatar upload failed");
-  }
-
-  // Cover Image
-  let coverImageCloudinaryPath = null;
-  const coverImageLocalPath = getFile(req, "coverImage")?.path;
-  if (coverImageLocalPath) {
-    coverImageCloudinaryPath = await uploadOnCloudinary(
-      coverImageLocalPath,
-      req.body.username,
-      ConstantEnums.COVER_IMAGE
-    );
-    if (!coverImageCloudinaryPath) {
-      throw new ApiError(400, "Cover Image upload failed");
+    // Schema Validation
+    const { success, error } = registerUserSchema.safeParse(req.body);
+    if (!success) {
+      throw new ApiError(400, "Validation Error", zodErrorConverter(error));
     }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [
+        { username: req.body.username?.trim() },
+        { email: req.body.email?.trim() },
+      ],
+    });
+    if (existingUser) {
+      throw new ApiError(409, "User Already Exists");
+    }
+
+    // Avatar Validation and Upload
+    const avatarLocalPath = getFile(req, "avatar")?.path;
+    if (!avatarLocalPath) {
+      throw new ApiError(400, "Avatar is required");
+    }
+    const avatarCloudinaryPath = await uploadOnCloudinary(
+      avatarLocalPath,
+      req.body.username,
+      ConstantEnums.AVATAR,
+      `${req.body.username}-${ConstantEnums.AVATAR}`
+    );
+    if (!avatarCloudinaryPath) {
+      throw new ApiError(400, "Avatar upload failed");
+    }
+
+    // Cover Image
+    let coverImageCloudinaryPath = null;
+    const coverImageLocalPath = getFile(req, "cover-image")?.path;
+    if (coverImageLocalPath) {
+      coverImageCloudinaryPath = await uploadOnCloudinary(
+        coverImageLocalPath,
+        req.body.username,
+        ConstantEnums.COVER_IMAGE,
+        `${req.body.username}-${ConstantEnums.COVER_IMAGE}`
+      );
+      if (!coverImageCloudinaryPath) {
+        throw new ApiError(400, "Cover Image upload failed");
+      }
+    }
+
+    // Create User
+    const user = await User.create({
+      fullName: req.body.fullName,
+      email: req.body.email,
+      username: req.body.username,
+      password: req.body.password,
+      avatar: avatarCloudinaryPath.url,
+      coverImage: coverImageCloudinaryPath?.url || null,
+    });
+
+    // Check if the user is created, if it is remove the password and refresh token field
+    const createdUser = await User.findById(user._id).select(
+      "-password -refreshToken"
+    );
+    if (!createdUser) {
+      throw new ApiError(500, "User creation failed");
+    }
+
+    return res
+      .status(201)
+      .json(new ApiResponse(201, createdUser, "User Created Successfully"));
   }
-
-  // Create User
-  const user = await User.create({
-    fullName: req.body.fullName,
-    email: req.body.email,
-    username: req.body.username,
-    password: req.body.password,
-    avatar: avatarCloudinaryPath.url,
-    coverImage: coverImageCloudinaryPath?.url || null,
-  });
-
-  // Check if the user is created, if it is remove the password and refresh token field
-  const createdUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
-  if (!createdUser) {
-    throw new ApiError(500, "User creation failed");
-  }
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, createdUser, "User Created Successfully"));
-});
-
-const loginUserSchema = z
-  .object({
-    email: z.string().email("Invalid email address"),
-    password: z.string().min(8, "Password must contain atleast 8 characters"),
-  })
-  .or(
-    z.object({
-      username: z.string(),
-      password: z.string().min(8, "Password must contain atleast 8 characters"),
-    })
-  );
+);
 
 /**
  * - Schema Validation
@@ -150,7 +117,7 @@ const loginUserSchema = z
  * - Generate refresh token
  * - Return res (send cookies)
  */
-const loginUser = asyncHandler(async (req: Request, res: Response) => {
+export const loginUser = asyncHandler(async (req: Request, res: Response) => {
   // If the body is empty
   if (!req.body) throw new ApiError(400, "Empty Request Body");
 
@@ -167,11 +134,7 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
   // Schema Validation
   const { success, error } = loginUserSchema.safeParse(req.body);
   if (!success) {
-    throw new ApiError(
-      400,
-      "Validation Error",
-      error.errors.map((e) => `${e.path.join(".")}: ${e.message}`)
-    );
+    throw new ApiError(400, "Validation Error", zodErrorConverter(error));
   }
 
   // Check if user exists
@@ -190,29 +153,21 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(401, "Incorrect Password");
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
-    user._id
-  );
+  const { accessToken, refreshToken } = await generateTokens(user._id);
 
   // Again Query the database to obtain the user
   const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken"
   );
 
-  // Send Cookied
-  const options = {
-    httpOnly: true, // cookie cannot be accessed by JavaScript running in the browser
-    secure: process.env.NODE_ENV === "production", // cookie will only be sent over HTTPS
-  };
-
   return res
     .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(new ApiResponse(200, loggedInUser, "Login Successful"));
 });
 
-const logoutUser = asyncHandler(async (req: Request, res: Response) => {
+export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
   // Remove refresh token from the database
   await User.findByIdAndUpdate(
     req.user._id,
@@ -222,16 +177,140 @@ const logoutUser = asyncHandler(async (req: Request, res: Response) => {
     }
   );
 
-  // clear cookied
-  const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-  };
   return res
     .status(200)
-    .clearCookie("accessToken", options)
-    .clearCookie("refreshToken", options)
+    .clearCookie("accessToken", cookieOptions)
+    .clearCookie("refreshToken", cookieOptions)
     .json(new ApiResponse(200, null, "Logout Successful"));
 });
 
-export { registerUser, loginUser, logoutUser };
+export const changePassword = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.body) throw new ApiError(400, "Empty Request Body");
+
+    const { success, error } = changePasswordSchema.safeParse(req.body);
+    if (!success) {
+      throw new ApiError(400, "Validation Error", zodErrorConverter(error));
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      throw new ApiError(404, "User Not Found");
+    }
+
+    const isPasswordCorrect = await user.isPasswordCorrect(
+      req.body.oldPassword
+    );
+    if (!isPasswordCorrect) {
+      throw new ApiError(401, "Incorrect Old Password");
+    }
+
+    /**
+     * You might think what kinda fool I am to directly set the password into the database
+     * But I have a pre hook defined in the userSchema that hashes the password before saving it to the database
+     */
+    user.password = req.body.newPassword;
+    await user.save({ validateBeforeSave: false });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Password Changed Successfully"));
+  }
+);
+
+export const getCurrentUser = asyncHandler(
+  async (req: Request, res: Response) => {
+    // I can also directly return res.user but it's useful to return the entire user object
+    const user = await User.findById(req.user?._id);
+    return res.status(200).json(new ApiResponse(200, user));
+  }
+);
+
+export const updateUserDetails = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.body) throw new ApiError(400, "Empty Request Body");
+
+    const { success, error } = updateUserDetailsSchema.safeParse(req.body);
+    if (!success) {
+      throw new ApiError(400, "Validation Error", zodErrorConverter(error));
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set: {
+          fullName: req.body.fullName,
+          email: req.body.email,
+        },
+      },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, user, "User Updated Sucessfully"));
+  }
+);
+
+export const updateUserAvatar = asyncHandler(
+  async (req: Request, res: Response) => {
+    const avatarLocalPath = getFile(req, "avatar")?.path;
+    if (!avatarLocalPath) {
+      throw new ApiError(400, "avatar file is missing");
+    }
+    const avatarCloudinaryPath = await uploadOnCloudinary(
+      avatarLocalPath,
+      req.user?.username,
+      ConstantEnums.AVATAR,
+      `${req.user?.username}-${ConstantEnums.AVATAR}`
+    );
+    if (!avatarCloudinaryPath) {
+      throw new ApiError(400, "Avatar upload failed");
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set: {
+          avatar: avatarCloudinaryPath.url,
+        },
+      },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, user, "Avatar Updated Sucessfully"));
+  }
+);
+
+export const updateUserCoverImage = asyncHandler(
+  async (req: Request, res: Response) => {
+    const coverImageLocalPath = getFile(req, "cover-image")?.path;
+    if (!coverImageLocalPath) {
+      throw new ApiError(400, "Cover Image file is missing");
+    }
+
+    const coverImageCloudinaryPath = await uploadOnCloudinary(
+      coverImageLocalPath,
+      req.user?.username,
+      ConstantEnums.COVER_IMAGE,
+      `${req.user?.username}-${ConstantEnums.COVER_IMAGE}`
+    );
+    if (!coverImageCloudinaryPath) {
+      throw new ApiError(400, "Cover Image upload failed");
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user?._id,
+      {
+        $set: {
+          avatar: coverImageCloudinaryPath.url,
+        },
+      },
+      { new: true }
+    ).select("-password -refreshToken");
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, user, "Cover Image Updated Sucessfully"));
+  }
+);

@@ -19,14 +19,23 @@ cloudinary.config({
 const uploadOnCloudinary = async (
   localFilePath: string,
   username: string,
-  contentType: ConstantEnums
+  contentType: ConstantEnums,
+  customFileName?: string
 ) => {
   try {
     if (!localFilePath) return null;
+
+    const folderStructure = `${ConstantEnums.TUBESTREAM}/${ConstantEnums.USERS}/${username}/${contentType}`;
+
+    const fileName = customFileName
+      ? customFileName
+      : `${username}-${contentType}-${Date.now()}`;
+
     //upload the file on cloudinary
     const response = await cloudinary.uploader.upload(localFilePath, {
-      folder: `${ConstantEnums.TUBESTREAM}/${ConstantEnums.USERS}/${username}/${contentType}`,
+      folder: folderStructure,
       resource_type: "auto",
+      public_id: fileName,
     });
     if (fs.existsSync(localFilePath)) {
       fs.unlinkSync(localFilePath);

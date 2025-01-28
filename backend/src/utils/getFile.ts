@@ -17,16 +17,6 @@ import { Request } from "express";
  *
  */
 
-// export default function getFile(
-//   req: Request,
-//   fieldName: string
-// ): Express.Multer.File | undefined {
-//   const files = req.files as
-//     | { [key: string]: Express.Multer.File[] }
-//     | undefined;
-//   return files?.[fieldName]?.[0];
-// }
-
 const getFile = (req: Request, fieldName: string) => {
   const files = req.files as
     | { [key: string]: Express.Multer.File[] }
