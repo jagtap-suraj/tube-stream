@@ -15,6 +15,7 @@ import {
 } from "../zodSchemas.js";
 import generateTokens from "../utils/generateTokens.js";
 import cookieOptions from "../constants/cookieOptions.js";
+import mongoose from "mongoose";
 
 /**
  * - Add Multer middleware in the user route
@@ -312,5 +313,167 @@ export const updateUserCoverImage = asyncHandler(
     return res
       .status(200)
       .json(new ApiResponse(200, user, "Cover Image Updated Sucessfully"));
+  }
+);
+
+export const getUserChannelProfile = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { username } = req.params;
+    if (!username?.trim()) return new ApiError(400, "Invalid Username");
+
+    // MongoDB Aggregation Pipeline returns an array
+    const channelDetails = await User.aggregate([
+      // Find the matching user
+      {
+        $match: {
+          username: username?.toLowerCase(),
+        },
+      },
+      // Perform lookup to find the total number of subscribers
+      {
+        $lookup: {
+          from: "subscriptions", // keep this in lowercase & in the plular form as opposed to its name in its model file
+          localField: "_id", // field of userId in the User Table
+          foreignField: "channelId", // Since we need to find all the collections where _id (User) = channelId (Subscription)
+          as: "subscribers", // Alias the result by the name "Subscribers"
+        },
+      },
+      // Lookup to find the total number of subscriptions
+      {
+        $lookup: {
+          from: "subscriptions",
+          localField: "_id",
+          foreignField: "subscriberId", // Find All the documents for the given user where _id (User) = userId (Subscription)
+          as: "subscriptions",
+        },
+      },
+      // Add the following fields to the User Table
+      {
+        $addFields: {
+          subscriberCount: {
+            $size: "$subscribers", // Added $ prefix to reference the array
+          },
+          subscriptionCount: {
+            $size: "$subscribers",
+          },
+          // Check if our id exists in all the collections returned by the subscribers lookup.
+          isSubscribed: {
+            $cond: {
+              // return true if current user's Id matches with any of the subscriberId
+              // from the newly given lookup result subscribers
+              if: { $in: [req.user?._id, "$subscribers.subscriberId"] },
+              then: true,
+              else: false,
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          fullName: 1, // 1 signifies that its flag is on that means it'll be included
+          username: 1,
+          email: 1,
+          avatar: 1,
+          coverImage: 1,
+          subscriberCount: 1,
+          subscriptionCount: 1,
+          isSubscribed: 1,
+          createdAt: 1,
+        },
+      },
+    ]);
+
+    if (!channelDetails?.length) throw new ApiError(404, "User Doesn't Exist");
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          channelDetails[0],
+          "User Channel Fetched Successfully"
+        )
+      );
+  }
+);
+
+export const getWatchHistory = asyncHandler(
+  async (req: Request, res: Response) => {
+    /**
+     * The logic will be somehting like we have an watchHistory field in the User table
+     * To populate it's data we first find the user with given userId in the User table
+     * After that we perform a lookup on the Video Table to populate the content of the watchHistory field
+     * of the User table.
+     * But since there's a field called owner in the video table which basically referes to an user
+     * so to obtain it's value we need to make another lookup to the User table
+     * Making it like nested pipeline kind of a situation.
+     */
+    const user = await User.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(`${req.user?._id}`),
+          /**
+           * We didn't directly compare req.user?._id with _id
+           * because in mongoDB the _ids are stored as ObjectId('679905d74f1ed6a9f9406393')
+           * and when we access _id through mongoose it automatially parses it to "679905d74f1ed6a9f9406393"
+           * but here an aggregation pipeline gets parsed directly by MongoDB
+           * thus to convert an ObjectId to a string Id we use this method of mongoose
+           * and the reason we pass`${req.user?._id}` in backticks cuz the method explcitly expects a string
+           */
+        },
+      },
+      {
+        $lookup: {
+          from: "videos",
+          localField: "watchHistory",
+          foreignField: "_id",
+          as: "watchHistory",
+          pipeline: [
+            {
+              $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                  {
+                    $project: {
+                      username: 1,
+                      fullName: 1,
+                      avatar: 1,
+                    },
+                  },
+                ],
+              },
+            },
+            /**
+             * Following change ensures that the value of the owner field is not an array of object
+             * but the first value of that array
+             */
+            {
+              $addFields: {
+                /**
+                 * Obtain the first value of the owner array and replace the obtained object with the
+                 * existing array-value of the owner field, making it simply an owner object
+                 */
+                owner: {
+                  $first: "$owner",
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          user[0].watchHistory[0],
+          "Watch-History Fetched Successfully"
+        )
+      );
   }
 );

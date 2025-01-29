@@ -8,6 +8,8 @@ import {
   updateUserAvatar,
   updateUserDetails,
   updateUserCoverImage,
+  getUserChannelProfile,
+  getWatchHistory,
 } from "../controllers/user.controller.js";
 import { Router } from "express";
 import verifyJWT from "../middlewares/auth.middleware.js";
@@ -29,5 +31,9 @@ router.route("/user").patch(verifyJWT, updateUserDetails);
 router.route("/avatar").patch(verifyJWT, upload, updateUserAvatar);
 
 router.route("/cover-image").patch(verifyJWT, upload, updateUserCoverImage);
+
+router.route("/c/:username").get(getUserChannelProfile);
+
+router.route("/history").get(verifyJWT, getWatchHistory);
 
 export default router;

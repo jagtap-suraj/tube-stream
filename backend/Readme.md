@@ -1,6 +1,7 @@
 # TubeStream - Backend
 
-- [Model link](https://app.eraser.io/workspace/YtPqZ1VogxGy1jzIDkzj?origin=share)
+- [Model link](https://app.eraser.io/workspace/YtPqZ1VogxGy1jzIDkzj)
+- [Figma Wireframe](https://www.figma.com/design/shmxWL5FKRO5GNOPPopBg6/)
 
 ---
 
