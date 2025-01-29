@@ -165,14 +165,29 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     .status(200)
     .cookie("accessToken", accessToken, cookieOptions)
     .cookie("refreshToken", refreshToken, cookieOptions)
-    .json(new ApiResponse(200, loggedInUser, "Login Successful"));
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "Login Successful"
+      )
+    );
 });
 
 export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
   // Remove refresh token from the database
   await User.findByIdAndUpdate(
     req.user._id,
-    { $set: { refreshToken: undefined } },
+    {
+      $unset: {
+        /* This removes the field from the document */
+        refreshToken: 1,
+      },
+    },
     {
       new: true,
     }
